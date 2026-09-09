@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Farbtokens. Hell = warmes Papierweiß, Dunkel = ruhiges Anthrazit.
+   Die Nutzerfarben (Profile) kommen aus der Datenbank und werden inline
+   gesetzt – hier stehen nur die Flächen des Interfaces.
+--------------------------------------------------------------------------- */
+:root {
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --surface-2: #f0efeb;
+  --border: #e2e0da;
+  --ink: #1c1b19;
+  --muted: #6f6c66;
+  --accent: #3f6b5a;
+  --accent-soft: #e4ede9;
+  --on-accent: #ffffff;
+  --danger: #a33a2c;
+  --warn: #a8730f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181a;
+    --surface: #1e2124;
+    --surface-2: #262a2e;
+    --border: #33383d;
+    --ink: #eceae6;
+    --muted: #9a9791;
+    --accent: #7fbfa4;
+    --accent-soft: #21322c;
+    --on-accent: #10201a;
+    --danger: #e08376;
+    --warn: #e0b45c;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  color-scheme: light dark;
+  /* Kein Zoom-Sprung beim Fokussieren von Feldern auf iOS. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  /* Safe-Area für Geräte mit Homebar. */
+  padding-bottom: env(safe-area-inset-bottom);
+  overscroll-behavior-y: none;
+}
+
+/* Auf dem Handy soll nichts wie eine Textauswahl auf einer Website wirken. */
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
