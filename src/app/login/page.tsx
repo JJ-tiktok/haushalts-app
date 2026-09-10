@@ -2,13 +2,26 @@ import { AuthForm } from "@/components/auth-form";
 
 export const metadata = { title: "Anmelden – Haushalt" };
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ fehler?: string }>;
+}) {
+  // Fehler aus dem Mail-Rücksprung (/auth/callback) sichtbar machen.
+  const { fehler } = await searchParams;
+
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-10">
       <header className="mb-8">
         <h1 className="text-3xl font-semibold text-ink">Haushalt</h1>
         <p className="mt-2 text-sm text-muted">Wer macht was – ohne Diskussion, ohne Vergessen.</p>
       </header>
+
+      {fehler && (
+        <p role="alert" className="mb-4 rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">
+          {fehler}
+        </p>
+      )}
 
       <AuthForm />
 

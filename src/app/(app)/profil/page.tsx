@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { ProfileForm } from "@/components/profile-form";
@@ -6,6 +5,7 @@ import { PushToggle } from "@/components/push-toggle";
 import { CalendarSubscription } from "@/components/calendar-subscription";
 import { signOut } from "@/lib/actions";
 import { pushIsConfigured } from "@/lib/push";
+import { getOrigin } from "@/lib/origin";
 import { getCurrentProfile, getMyPushDeviceCount, getProfiles } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -18,12 +18,8 @@ export default async function ProfilPage() {
   ]);
   if (!me) redirect("/login");
 
-  // Absolute Adresse für das Kalender-Abo aus dem Request ableiten.
-  const headerList = await headers();
-  const host = headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "localhost:3000";
-  const protokoll =
-    headerList.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const origin = `${protokoll}://${host}`;
+  // Absolute Adresse für das Kalender-Abo.
+  const origin = await getOrigin();
 
   const andere = profiles.filter((p) => p.id !== me.id);
 

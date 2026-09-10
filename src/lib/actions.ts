@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureAssignments, requestOnDemand } from "@/lib/scheduler";
 import { sendPushToProfile } from "@/lib/push";
 import { daysBetween, today } from "@/lib/date";
+import { getOrigin } from "@/lib/origin";
 import type { RecurrenceType } from "@/lib/database.types";
 
 function revalidateAll() {
@@ -54,7 +55,12 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { display_name: displayName, color } },
+    options: {
+      data: { display_name: displayName, color },
+      // Ohne das nimmt Supabase die im Dashboard hinterlegte Site-URL –
+      // die zeigt im Standard auf localhost.
+      emailRedirectTo: `${await getOrigin()}/auth/callback`,
+    },
   });
   if (error) return { error: error.message };
   if (!data.session) {
