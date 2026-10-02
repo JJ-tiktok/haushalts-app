@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureAssignments, requestOnDemand } from "@/lib/scheduler";
 import { sendPushToProfile } from "@/lib/push";
-import { daysBetween, today } from "@/lib/date";
+import { addDays, daysBetween, today } from "@/lib/date";
 import { getOrigin } from "@/lib/origin";
 import type { RecurrenceType } from "@/lib/database.types";
 
@@ -106,7 +106,7 @@ export async function reopenAssignment(assignmentId: string) {
 
   const { data: assignment, error } = await supabase
     .from("assignments")
-    .select("id, task_id")
+    .select("id, task_id, status")
     .eq("id", assignmentId)
     .single();
   if (error) throw error;
@@ -120,13 +120,52 @@ export async function reopenAssignment(assignmentId: string) {
     .eq("status", "open");
   if (cleanupError) throw cleanupError;
 
+  // Die Auslassen-Felder nur anfassen, wenn es sie betrifft – so bleibt
+  // "Rückgängig" auch ohne erneut ausgeführte schema.sql nutzbar.
   const { error: reopenError } = await supabase
     .from("assignments")
-    .update({ status: "open", completed_at: null, completed_by: null })
+    .update(
+      assignment.status === "skipped"
+        ? { status: "open", skipped_at: null, skipped_by: null }
+        : { status: "open", completed_at: null, completed_by: null },
+    )
     .eq("id", assignmentId);
   if (reopenError) throw reopenError;
 
   revalidateAll();
+}
+
+/**
+ * "Diesmal auslassen": die Runde ist beendet, ohne dass sie gemacht wurde.
+ * Es gibt dafür keine Punkte und keine Last; die nächste Runde folgt
+ * regulär nach Turnus und wird ganz normal fair verteilt.
+ */
+export async function skipAssignment(assignmentId: string): Promise<{ error: string | null }> {
+  const { supabase, user } = await requireUser();
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .update({
+      status: "skipped",
+      skipped_at: new Date().toISOString(),
+      skipped_by: user.id,
+    })
+    .eq("id", assignmentId)
+    .eq("status", "open")
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "Die Aufgabe ist nicht mehr offen." };
+
+  // Eine laufende Tauschanfrage hat sich damit erledigt.
+  await supabase
+    .from("swap_requests")
+    .update({ status: "cancelled", resolved_at: new Date().toISOString() })
+    .eq("assignment_id", assignmentId)
+    .eq("status", "pending");
+
+  await ensureAssignments(supabase);
+  revalidateAll();
+  return { error: null };
 }
 
 export async function toggleChecklistItem(
@@ -576,6 +615,44 @@ export async function sendTestPush(): Promise<{ delivered: number }> {
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
+ * Setzt die Fälligkeit einer offenen Zuweisung neu.
+ *
+ * Wird eine Aufgabe weggeschoben, die schon dran war (heute oder früher),
+ * merkt sich `original_due_date` den ursprünglichen Tag – für den Hinweis
+ * "seit 3 Tagen offen" und damit ein späteres Auslassen den Turnus-Rhythmus
+ * behält. Das Umplanen zukünftiger Aufgaben ändert daran nichts.
+ */
+async function moveDueDate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  assignmentId: string,
+  dueDate: string,
+): Promise<{ error: string | null }> {
+  const { data: row, error } = await supabase
+    .from("assignments")
+    .select("*")
+    .eq("id", assignmentId)
+    .single();
+  if (error) return { error: "Aufgabe nicht gefunden." };
+  if (row.status !== "open") return { error: "Die Aufgabe ist nicht mehr offen." };
+  if (row.due_date === dueDate) return { error: null };
+
+  const update: { due_date: string; original_due_date?: string } = { due_date: dueDate };
+  // `in`: ohne erneut ausgeführte schema.sql gibt es die Spalte noch nicht.
+  if ("original_due_date" in row && daysBetween(row.due_date, today()) <= 0) {
+    update.original_due_date = row.original_due_date ?? row.due_date;
+  }
+
+  const { error: updateError } = await supabase
+    .from("assignments")
+    .update(update)
+    .eq("id", assignmentId)
+    .eq("status", "open");
+  if (updateError) return { error: updateError.message };
+
+  return { error: null };
+}
+
+/**
  * Verschiebt eine offene Zuweisung auf einen anderen Tag.
  *
  * Ändert nur die Fälligkeit, nicht die Zuständigkeit – wer dran ist, bleibt
@@ -590,21 +667,35 @@ export async function rescheduleAssignment(
 
   if (!ISO_DAY.test(dueDate)) return { error: "Ungültiges Datum." };
 
-  // Grober Rahmen gegen Vertipper und manipulierte Requests.
+  // Vergangene Tage ergeben keinen Sinn – Überfälliges rollt ohnehin
+  // automatisch auf heute. Nach vorn ein grober Rahmen gegen Vertipper.
   const abstand = daysBetween(dueDate, today());
-  if (abstand < -60 || abstand > 180) {
-    return { error: "Das Datum liegt zu weit weg." };
-  }
+  if (abstand < 0) return { error: "Das Datum liegt in der Vergangenheit." };
+  if (abstand > 180) return { error: "Das Datum liegt zu weit weg." };
 
-  const { error } = await supabase
+  const result = await moveDueDate(supabase, assignmentId, dueDate);
+  if (!result.error) revalidateAll();
+  return result;
+}
+
+/** "Auf morgen": schiebt eine offene Zuweisung auf den nächsten Tag. */
+export async function postponeAssignment(assignmentId: string): Promise<{ error: string | null }> {
+  const { supabase } = await requireUser();
+
+  const { data: row, error } = await supabase
     .from("assignments")
-    .update({ due_date: dueDate })
+    .select("due_date")
     .eq("id", assignmentId)
-    .eq("status", "open");
-  if (error) return { error: error.message };
+    .single();
+  if (error) return { error: "Aufgabe nicht gefunden." };
 
-  revalidateAll();
-  return { error: null };
+  // Von heute aus gerechnet, falls das Weiterrollen noch nicht gelaufen ist.
+  const heute = today();
+  const basis = daysBetween(row.due_date, heute) > 0 ? row.due_date : heute;
+
+  const result = await moveDueDate(supabase, assignmentId, addDays(basis, 1));
+  if (!result.error) revalidateAll();
+  return result;
 }
 
 // ---------------------------------------------------------------------------

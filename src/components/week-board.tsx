@@ -21,6 +21,8 @@ export type WeekDay = {
   /** "09.09." */
   dayLabel: string;
   isToday: boolean;
+  /** Vergangene Tage sind kein Ziel zum Verschieben. */
+  isPast: boolean;
   isWeekend: boolean;
 };
 
@@ -208,7 +210,7 @@ function TagAuswahl({
               <li key={day.date}>
                 <button
                   type="button"
-                  disabled={pending || aktuell}
+                  disabled={pending || aktuell || day.isPast}
                   onClick={() => onPick(day.date)}
                   className={`w-full rounded-xl border px-3 py-2.5 text-sm font-medium disabled:opacity-60 ${
                     aktuell ? "border-accent bg-accent-soft text-ink" : "border-border text-ink"

@@ -54,6 +54,11 @@ export default async function HeutePage() {
     else thisWeek.push(a);
   }
 
+  // Verschlepptes zuerst – je länger offen, desto weiter oben.
+  dueToday.sort((a, b) =>
+    (a.original_due_date ?? a.due_date).localeCompare(b.original_due_date ?? b.due_date),
+  );
+
   const weekMinutes: Record<string, number> = {};
   for (const a of weekDone) {
     const doer = a.completed_by ?? a.assignee_id;

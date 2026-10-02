@@ -43,7 +43,8 @@ export function computeLoad(
       load[a.assignee_id] = (load[a.assignee_id] ?? 0) + a.effort_minutes;
       continue;
     }
-    if (!a.completed_at) continue;
+    // Ausgelassenes ("diesmal nicht") ist keine geleistete Arbeit.
+    if (a.status !== "done" || !a.completed_at) continue;
     if (daysBetween(toDay(a.completed_at), windowStart) < 0) continue;
     // Gutgeschrieben wird, wer die Aufgabe tatsächlich erledigt hat.
     const doer = a.completed_by ?? a.assignee_id;
@@ -99,4 +100,38 @@ export function pickAssignee({
   });
 
   return sorted[0].id;
+}
+
+/** Wie die letzte Runde einer Aufgabe zu Ende gegangen ist. */
+export type LastRound =
+  | { kind: "done"; /** Kalendertag der Erledigung */ day: string }
+  | {
+      kind: "skipped";
+      /** Ursprünglich geplanter Tag der ausgelassenen Runde */
+      plannedDay: string;
+      /** Kalendertag, an dem ausgelassen wurde */
+      day: string;
+    };
+
+/**
+ * Fälligkeit der nächsten Runde einer Turnus-Aufgabe.
+ *
+ * - Erledigt: Turnus ab dem Tag der Erledigung – wer spät dran war,
+ *   verschiebt damit auch die nächste Runde.
+ * - Ausgelassen: Turnus ab dem *geplanten* Tag, damit die Aufgabe ihren
+ *   gewohnten Rhythmus behält (Bad montags bleibt montags). Frühestens aber
+ *   am Tag nach dem Auslassen – sonst stünde sie sofort wieder da.
+ * - Noch nie gelaufen: ab `reference` fällig.
+ */
+export function nextRoundDate(
+  intervalDays: number,
+  last: LastRound | undefined,
+  reference: string,
+): string {
+  if (!last) return reference;
+  if (last.kind === "done") return addDays(last.day, intervalDays);
+
+  const regular = addDays(last.plannedDay, intervalDays);
+  const earliest = addDays(last.day, 1);
+  return daysBetween(regular, earliest) >= 0 ? regular : earliest;
 }

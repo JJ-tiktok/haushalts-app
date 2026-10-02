@@ -52,6 +52,7 @@ export default async function DashboardPage() {
       weekday: weekdayShort(date),
       dayLabel: dayAndMonth(date),
       isToday: date === heute,
+      isPast: daysBetween(date, heute) < 0,
       isWeekend: isWeekend(date),
     };
   });

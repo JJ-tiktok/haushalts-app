@@ -75,7 +75,7 @@ export default async function VerlaufPage() {
       <Scoreboard profiles={profiles} completed={completed} />
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-ink">Zuletzt erledigt</h2>
+        <h2 className="text-sm font-semibold text-ink">Zuletzt erledigt oder ausgelassen</h2>
         {history.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted">
             Noch nichts abgehakt.
@@ -86,7 +86,10 @@ export default async function VerlaufPage() {
               <HistoryItem
                 key={entry.id}
                 entry={entry}
-                person={byId.get(entry.completed_by ?? entry.assignee_id)}
+                person={byId.get(
+                  (entry.status === "skipped" ? entry.skipped_by : entry.completed_by) ??
+                    entry.assignee_id,
+                )}
               />
             ))}
           </ul>

@@ -116,6 +116,19 @@ export function formatDueDate(day: string, reference = today()): string {
   return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
 }
 
+/**
+ * Hinweis für verschleppte Aufgaben: "seit gestern offen", "seit 3 Tagen
+ * offen". `null`, wenn die Aufgabe nicht hinter ihrem ursprünglichen Tag
+ * zurückliegt.
+ */
+export function formatCarryOver(originalDue: string | null, reference = today()): string | null {
+  if (!originalDue) return null;
+  const tage = daysBetween(reference, originalDue);
+  if (tage <= 0) return null;
+  if (tage === 1) return "seit gestern offen";
+  return `seit ${tage} Tagen offen`;
+}
+
 /** "45 Min" bzw. "1 Std 15 Min". */
 export function formatMinutes(minutes: number): string {
   if (minutes < 60) return `${minutes} Min`;
