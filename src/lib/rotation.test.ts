@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Assignment, Profile } from "@/lib/database.types";
-import { computeLoad, isAway, pickAssignee } from "@/lib/rotation";
+import { computeLoad, isAway, nextRoundDate, pickAssignee } from "@/lib/rotation";
 
 const HEUTE = "2026-09-09";
 
@@ -37,6 +37,9 @@ function assignment(partial: Partial<Assignment>): Assignment {
     completed_at: null,
     completed_by: null,
     reminded_at: null,
+    skipped_at: null,
+    skipped_by: null,
+    original_due_date: null,
     created_at: `${HEUTE}T08:00:00Z`,
     ...partial,
   };
@@ -172,5 +175,55 @@ describe("Verteilung über mehrere Aufgaben", () => {
     // Perfekt geht nicht bei diesen Zahlen – aber deutlich unter der
     // größten Einzelaufgabe muss der Unterschied bleiben.
     expect(differenz).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("Auslassen", () => {
+  it("zählt ausgelassene Runden nicht als Last", () => {
+    const load = computeLoad(
+      PROFILE,
+      [
+        assignment({
+          status: "skipped",
+          skipped_at: `${HEUTE}T09:00:00Z`,
+          skipped_by: anna.id,
+          effort_minutes: 60,
+        }),
+        done(ben.id, 20, "2026-09-08"),
+      ],
+      HEUTE,
+    );
+    expect(load).toEqual({ anna: 0, ben: 20 });
+  });
+});
+
+describe("nextRoundDate", () => {
+  it("ist ohne Historie sofort fällig", () => {
+    expect(nextRoundDate(7, undefined, HEUTE)).toBe(HEUTE);
+  });
+
+  it("rechnet nach Erledigung ab dem Erledigungstag", () => {
+    expect(nextRoundDate(3, { kind: "done", day: "2026-09-08" }, HEUTE)).toBe("2026-09-11");
+  });
+
+  it("behält beim Auslassen am Fälligkeitstag den Rhythmus", () => {
+    // Montag geplant, Montag ausgelassen -> nächster Montag
+    expect(
+      nextRoundDate(7, { kind: "skipped", plannedDay: "2026-09-07", day: "2026-09-07" }, HEUTE),
+    ).toBe("2026-09-14");
+  });
+
+  it("behält den Rhythmus auch bei verspätetem Auslassen", () => {
+    // Montag geplant, Mittwoch ausgelassen -> trotzdem nächster Montag
+    expect(
+      nextRoundDate(7, { kind: "skipped", plannedDay: "2026-09-07", day: "2026-09-09" }, HEUTE),
+    ).toBe("2026-09-14");
+  });
+
+  it("kommt nach dem Auslassen frühestens am nächsten Tag wieder", () => {
+    // Täglich, seit Tagen verschleppt, heute ausgelassen -> morgen
+    expect(nextRoundDate(1, { kind: "skipped", plannedDay: "2026-09-05", day: HEUTE }, HEUTE)).toBe(
+      "2026-09-10",
+    );
   });
 });

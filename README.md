@@ -31,6 +31,11 @@ Im Supabase-Dashboard unter **SQL Editor** nacheinander ausführen:
 `seed.sql` ist als leicht editierbare Liste geschrieben: Namen, Turnus, Aufwand und
 Checklisten stehen ganz oben als Tabelle. Mehrfaches Ausführen legt keine Duplikate an.
 
+**Update auf eine neue Version:** `schema.sql` ist idempotent und darf jederzeit komplett
+erneut ausgeführt werden – neue Spalten, Typen und Funktionen kommen dann einfach dazu.
+Für „Auf morgen“, „Diesmal auslassen“ und das automatische Weiterrollen überfälliger
+Aufgaben muss die Datei einmal erneut gelaufen sein.
+
 ### 3. Zugangsdaten eintragen
 
 ```bash

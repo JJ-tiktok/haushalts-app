@@ -5,7 +5,7 @@
  */
 
 export type RecurrenceType = "interval" | "on_demand";
-export type AssignmentStatus = "open" | "done";
+export type AssignmentStatus = "open" | "done" | "skipped";
 export type SwapStatus = "pending" | "accepted" | "declined" | "cancelled";
 
 export type Profile = {
@@ -46,6 +46,11 @@ export type Assignment = {
   completed_at: string | null;
   completed_by: string | null;
   reminded_at: string | null;
+  /** Gesetzt, wenn die Runde ausgelassen wurde ("diesmal nicht"). */
+  skipped_at: string | null;
+  skipped_by: string | null;
+  /** Ursprünglich geplanter Tag – gesetzt beim ersten Verschieben/Weiterrollen. */
+  original_due_date: string | null;
   created_at: string;
 };
 
@@ -152,6 +157,7 @@ export type Database = {
           Fk<"assignments_task_id_fkey", "task_id", "tasks">,
           Fk<"assignments_assignee_id_fkey", "assignee_id", "profiles">,
           Fk<"assignments_completed_by_fkey", "completed_by", "profiles">,
+          Fk<"assignments_skipped_by_fkey", "skipped_by", "profiles">,
         ];
       };
       swap_requests: {
@@ -217,7 +223,12 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      roll_over_overdue: {
+        Args: { p_today: string };
+        Returns: number;
+      };
+    };
     Enums: {
       recurrence_type: RecurrenceType;
       assignment_status: AssignmentStatus;

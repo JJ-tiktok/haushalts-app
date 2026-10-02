@@ -35,6 +35,9 @@ function done(profileId: string, minutes: number, day: string): Assignment {
     completed_at: `${day}T12:00:00Z`,
     completed_by: profileId,
     reminded_at: null,
+    skipped_at: null,
+    skipped_by: null,
+    original_due_date: null,
     created_at: `${day}T08:00:00Z`,
   };
 }

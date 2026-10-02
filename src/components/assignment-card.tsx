@@ -9,9 +9,11 @@ import {
   completeAssignment,
   declineSwap,
   offerSwap,
+  postponeAssignment,
+  skipAssignment,
   toggleChecklistItem,
 } from "@/lib/actions";
-import { formatDueDate, formatMinutes } from "@/lib/date";
+import { daysBetween, formatCarryOver, formatDueDate, formatMinutes, today } from "@/lib/date";
 import { readableInk, tint } from "@/lib/color";
 import { Avatar } from "@/components/avatar";
 import { AssignmentExtras } from "@/components/assignment-extras";
@@ -38,7 +40,8 @@ export function AssignmentCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [swapError, setSwapError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmSkip, setConfirmSkip] = useState(false);
   const [checked, setChecked] = useOptimistic(
     assignment.checkedItemIds,
     (state: string[], change: { id: string; value: boolean }) =>
@@ -61,14 +64,19 @@ export function AssignmentCard({
     });
   }
 
-  /** Führt eine Tausch-Aktion aus und zeigt deren Fehlermeldung an. */
-  function runSwap(action: () => Promise<{ error: string | null }>) {
+  /** Führt eine Aktion (Tausch, Verschieben, Auslassen) aus und zeigt deren Fehlermeldung an. */
+  function run(action: () => Promise<{ error: string | null }>) {
     startTransition(async () => {
-      setSwapError(null);
+      setActionError(null);
       const result = await action();
-      if (result.error) setSwapError(result.error);
+      if (result.error) setActionError(result.error);
     });
   }
+
+  const carryOver = formatCarryOver(assignment.original_due_date);
+  // Was heute (oder früher) dran ist, geht "auf morgen"; Späteres einen Tag weiter.
+  const postponeLabel =
+    daysBetween(assignment.due_date, today()) <= 0 ? "Auf morgen" : "Einen Tag später";
 
   const swap = assignment.pendingSwap;
   const swapAnMich = swap?.requested_to === meId;
@@ -91,6 +99,12 @@ export function AssignmentCard({
             <span className={overdue ? "font-semibold text-danger" : ""}>
               {formatDueDate(assignment.due_date)}
             </span>
+            {carryOver && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="font-medium text-danger">{carryOver}</span>
+              </>
+            )}
             <span aria-hidden>·</span>
             <span>{formatMinutes(assignment.effort_minutes)}</span>
             {assignee && (
@@ -170,6 +184,49 @@ export function AssignmentCard({
           {isMine ? "Erledigt" : `Für ${assignee?.display_name ?? "die andere Person"} erledigt`}
         </button>
 
+        {confirmSkip ? (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="flex-1 text-xs text-muted">
+              Diesmal auslassen? Die nächste Runde kommt regulär.
+            </span>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => skipAssignment(assignment.id))}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-50"
+            >
+              Ja
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setConfirmSkip(false)}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted disabled:opacity-50"
+            >
+              Nein
+            </button>
+          </div>
+        ) : (
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => postponeAssignment(assignment.id))}
+              className="flex-1 rounded-lg border border-border py-1.5 text-xs font-medium text-muted disabled:opacity-50"
+            >
+              {postponeLabel}
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setConfirmSkip(true)}
+              className="flex-1 rounded-lg border border-border py-1.5 text-xs font-medium text-muted disabled:opacity-50"
+            >
+              Diesmal auslassen
+            </button>
+          </div>
+        )}
+
         {swap ? (
           swapAnMich ? (
             <div className="mt-2">
@@ -181,7 +238,7 @@ export function AssignmentCard({
                 <button
                   type="button"
                   disabled={pending}
-                  onClick={() => runSwap(() => acceptSwap(swap.id))}
+                  onClick={() => run(() => acceptSwap(swap.id))}
                   className="flex-1 rounded-lg border border-accent bg-accent-soft py-2 text-xs font-semibold text-ink disabled:opacity-50"
                 >
                   Übernehmen
@@ -189,7 +246,7 @@ export function AssignmentCard({
                 <button
                   type="button"
                   disabled={pending}
-                  onClick={() => runSwap(() => declineSwap(swap.id))}
+                  onClick={() => run(() => declineSwap(swap.id))}
                   className="flex-1 rounded-lg border border-border py-2 text-xs font-medium text-muted disabled:opacity-50"
                 >
                   Ablehnen
@@ -202,7 +259,7 @@ export function AssignmentCard({
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => runSwap(() => cancelSwap(swap.id))}
+                onClick={() => run(() => cancelSwap(swap.id))}
                 className="text-xs font-medium text-muted disabled:opacity-50"
               >
                 Zurückziehen
@@ -217,7 +274,7 @@ export function AssignmentCard({
             <button
               type="button"
               disabled={pending}
-              onClick={() => runSwap(() => offerSwap(assignment.id))}
+              onClick={() => run(() => offerSwap(assignment.id))}
               className="mt-2 w-full py-1 text-xs font-medium text-muted disabled:opacity-50"
             >
               {partnerName ? `${partnerName} um Tausch bitten` : "Zum Tausch anbieten"}
@@ -225,9 +282,9 @@ export function AssignmentCard({
           )
         )}
 
-        {swapError && (
+        {actionError && (
           <p role="alert" className="mt-2 text-xs text-danger">
-            {swapError}
+            {actionError}
           </p>
         )}
 

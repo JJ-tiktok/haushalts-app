@@ -189,17 +189,36 @@ export async function getTasks(includeInactive = false): Promise<TaskView[]> {
 
 export type HistoryEntry = Assignment & { task: Task };
 
-/** Zuletzt erledigte Aufgaben (Verlauf). */
+/** Zeitpunkt, an dem eine Runde geendet hat – erledigt oder ausgelassen. */
+export function endedAt(entry: Assignment): string | null {
+  return entry.status === "skipped" ? entry.skipped_at : entry.completed_at;
+}
+
+/** Zuletzt erledigte und ausgelassene Runden (Verlauf), neueste zuerst. */
 export async function getHistory(limit = 60): Promise<HistoryEntry[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("assignments")
-    .select("*, task:tasks(*)")
-    .eq("status", "done")
-    .order("completed_at", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []) as unknown as HistoryEntry[];
+  const [doneRes, skippedRes] = await Promise.all([
+    supabase
+      .from("assignments")
+      .select("*, task:tasks(*)")
+      .eq("status", "done")
+      .order("completed_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("assignments")
+      .select("*, task:tasks(*)")
+      .eq("status", "skipped")
+      .order("skipped_at", { ascending: false })
+      .limit(limit),
+  ]);
+  if (doneRes.error) throw doneRes.error;
+  // Ohne erneut ausgeführte schema.sql kennt die Datenbank "skipped" noch
+  // nicht – dann gibt es eben nichts Ausgelassenes zu zeigen.
+  const skipped = skippedRes.error ? [] : (skippedRes.data ?? []);
+
+  return ([...(doneRes.data ?? []), ...skipped] as unknown as HistoryEntry[])
+    .sort((a, b) => (endedAt(b) ?? "").localeCompare(endedAt(a) ?? ""))
+    .slice(0, limit);
 }
 
 /** Erledigte Zuweisungen seit einem Stichtag – Basis der Fairness-Übersicht. */

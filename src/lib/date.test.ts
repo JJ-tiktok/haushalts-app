@@ -3,6 +3,7 @@ import {
   addDays,
   dayAndMonth,
   daysBetween,
+  formatCarryOver,
   formatDueDate,
   formatMinutes,
   formatRecurrence,
@@ -97,5 +98,19 @@ describe("Wochenraster-Beschriftung", () => {
     expect(isWeekend("2026-09-11")).toBe(false); // Freitag
     expect(isWeekend("2026-09-12")).toBe(true); // Samstag
     expect(isWeekend("2026-09-13")).toBe(true); // Sonntag
+  });
+});
+
+describe("formatCarryOver", () => {
+  it("meldet nichts, solange die Aufgabe nicht verschleppt ist", () => {
+    expect(formatCarryOver(null, "2026-09-09")).toBeNull();
+    expect(formatCarryOver("2026-09-09", "2026-09-09")).toBeNull();
+    // Nur nach hinten verschoben ("Auf morgen" am Fälligkeitstag)
+    expect(formatCarryOver("2026-09-09", "2026-09-08")).toBeNull();
+  });
+
+  it("zählt die Tage seit dem ursprünglichen Termin", () => {
+    expect(formatCarryOver("2026-09-08", "2026-09-09")).toBe("seit gestern offen");
+    expect(formatCarryOver("2026-09-06", "2026-09-09")).toBe("seit 3 Tagen offen");
   });
 });

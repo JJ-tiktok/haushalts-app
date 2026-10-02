@@ -392,3 +392,46 @@ create policy "household writes task photos" on storage.objects
 
 create policy "household deletes task photos" on storage.objects
   for delete to authenticated using (bucket_id = 'task-photos');
+
+-- =====================================================================
+-- Verschieben, Auslassen und automatisches Weiterrollen
+-- Wie der Rest idempotent – die Datei darf erneut ausgeführt werden.
+-- =====================================================================
+
+-- "Diesmal auslassen": die Runde ist beendet, zählt aber weder als Last
+-- noch als Punkte. Der neue Wert wird in dieser Datei bewusst nirgends
+-- verwendet – Postgres erlaubt das erst nach dem Commit.
+alter type assignment_status add value if not exists 'skipped';
+
+alter table public.assignments
+  add column if not exists skipped_at        timestamptz,
+  add column if not exists skipped_by        uuid references public.profiles (id),
+  -- Ursprünglich geplanter Tag. Wird beim ersten Verschieben bzw.
+  -- Weiterrollen gesetzt – Grundlage für "seit 3 Tagen offen".
+  add column if not exists original_due_date date;
+
+-- ---------------------------------------------------------------------
+-- Was nicht erledigt wurde, rutscht auf heute statt ewig überfällig zu
+-- stehen. Ein einziges UPDATE – laufen beide Handys gleichzeitig, passiert
+-- nichts Doppeltes. reminded_at wird zurückgesetzt, damit die
+-- Morgen-Erinnerung die Aufgabe erneut aufführt.
+-- ---------------------------------------------------------------------
+create or replace function public.roll_over_overdue(p_today date)
+returns int
+language sql
+security invoker
+set search_path = public
+as $func$
+  with moved as (
+    update public.assignments
+       set original_due_date = coalesce(original_due_date, due_date),
+           due_date          = p_today,
+           reminded_at       = null
+     where status = 'open'
+       and due_date < p_today
+    returning 1
+  )
+  select count(*)::int from moved;
+$func$;
+
+grant execute on function public.roll_over_overdue(date) to authenticated, service_role;
